@@ -39,6 +39,13 @@ export interface LocalMusicFile {
 	duration: number | undefined | null;
 }
 
+export interface MusicCollection {
+	id: string;
+	name: string;
+	folderPath: string;
+	musicIndex: LocalMusicFile[];
+}
+
 export interface LocalPlayerState {
 	currentTrack?: LocalMusicFile | undefined;
 	playerState?: PLAYER_STATE | undefined;

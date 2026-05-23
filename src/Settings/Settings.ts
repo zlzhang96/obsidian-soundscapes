@@ -5,7 +5,7 @@ import ConfirmModal from "src/ConfirmModal/ConfirmModal";
 import EditCustomSoundscapeModal from "src/EditCustomSoundscapeModal/EditCustomSoundscapeModal";
 import SOUNDSCAPES from "src/Soundscapes";
 import { SOUNDSCAPE_TYPE } from "src/Types/Enums";
-import { CustomSoundscape, LocalMusicFile } from "src/Types/Interfaces";
+import { CustomSoundscape, LocalMusicFile, MusicCollection } from "src/Types/Interfaces";
 import electron from "electron";
 
 export interface SoundscapesPluginSettings {
@@ -16,6 +16,7 @@ export interface SoundscapesPluginSettings {
 	customSoundscapes: CustomSoundscape[];
 	myMusicIndex: LocalMusicFile[];
 	myMusicFolderPath: string;
+	musicCollections: MusicCollection[];
 	reindexFrequency: string;
 	myMusicShuffle: boolean;
 	currentTrackIndex: number;
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: SoundscapesPluginSettings = {
 	customSoundscapes: [],
 	myMusicIndex: [],
 	myMusicFolderPath: "",
+	musicCollections: [],
 	reindexFrequency: "5",
 	myMusicShuffle: false,
 	currentTrackIndex: 0,
@@ -66,7 +68,12 @@ export class SoundscapesSettingsTab extends PluginSettingTab {
 					}
 				);
 
-				component.addOption(SOUNDSCAPE_TYPE.MY_MUSIC, "My Music");
+				this.plugin.settings.musicCollections.forEach((collection) => {
+					component.addOption(
+						`MUSIC_COLLECTION_${collection.id}`,
+						collection.name
+					);
+				});
 
 				component.setValue(this.plugin.settings.soundscape);
 
@@ -185,45 +192,117 @@ export class SoundscapesSettingsTab extends PluginSettingTab {
 				});
 		});
 
-		containerEl.createEl("h1", { text: "My Music" });
+		containerEl.createEl("h1", { text: "Music Collections" });
 		containerEl.createEl("p", {
-			text: "The My Music Soundscape plays music files from your local computer. It includes a dedicated view for managing your music in addition to the mini-player on the statusbar.",
+			text: "Music collections allow you to play music files from your local computer. Each collection can point to a different folder. Switch between them from the soundscape dropdown or mini-player.",
 		});
 
-		new Setting(containerEl)
-			.setName("Music path")
-			.setDesc(
-				`Path to where your music files are located. Plugin will also search through all subfolders of the provided folder.`
-			)
-			.addText((component) => {
-				component.setDisabled(true);
-				component.setValue(this.plugin.settings.myMusicFolderPath);
-			})
-			.addExtraButton((component) => {
-				component.setIcon("folder-open");
-				component.setTooltip("Select folder");
+		this.plugin.settings.musicCollections.forEach(
+			(collection, index) => {
+				const isActive = this.plugin.settings.soundscape === `MUSIC_COLLECTION_${collection.id}`;
 
-				component.onClick(() => {
-					// @ts-ignore
-					electron.remote.dialog
-						.showOpenDialog({
-							properties: ["openDirectory"],
-							title: "Select a folder",
-						})
-						.then((result: any) => {
-							if (!result.canceled) {
-								this.plugin.settings.myMusicFolderPath =
-									result.filePaths[0];
-								// We need to reset the index and force it to reindex now that we have a new path
-								this.plugin.settings.myMusicIndex = [];
-								this.plugin.saveSettings();
-								this.display();
+				const settingEl = new Setting(containerEl)
+					.setName(collection.name)
+					.setDesc(
+						`${collection.musicIndex.length} songs — ${collection.folderPath || "No path set"}`
+					)
+					.addText((component) => {
+						component.setValue(collection.name);
+						component.onChange((value) => {
+							collection.name = value;
+							this.plugin.saveSettings();
+							this.plugin.populateChangeSoundscapeButton();
+							settingEl.setName(value);
+						});
+					})
+					.addExtraButton((component) => {
+						component.setIcon("folder-open");
+						component.setTooltip("Select folder");
+						component.onClick(() => {
+							// @ts-ignore
+							electron.remote.dialog
+								.showOpenDialog({
+									properties: ["openDirectory"],
+									title: `Select folder for "${collection.name}"`,
+								})
+								.then((result: any) => {
+									if (!result.canceled) {
+										collection.folderPath = result.filePaths[0];
+										collection.musicIndex = [];
+										if (isActive) {
+											this.plugin.settings.myMusicIndex = [];
+											this.plugin.settings.myMusicFolderPath = collection.folderPath;
+										}
+										this.plugin.saveSettings();
+										this.display();
+										if (isActive) {
+											this.plugin.indexMusicLibrary();
+											this.plugin.onSoundscapeChange();
+										}
+									}
+								});
+						});
+					})
+					.addExtraButton((component) => {
+						component.setIcon("folder-sync");
+						component.setTooltip("Re-index now");
+						component.onClick(() => {
+							if (isActive) {
 								this.plugin.indexMusicLibrary();
-								this.plugin.onSoundscapeChange();
+							} else {
+								// Switch to this collection, index, then switch back
+								const prevSoundscape = this.plugin.settings.soundscape;
+								this.plugin.changeSoundscape(`MUSIC_COLLECTION_${collection.id}`);
+								this.plugin.indexMusicLibrary();
+								this.plugin.populateChangeSoundscapeButton();
+								this.display();
 							}
 						});
+					})
+					.addButton((component) => {
+						component.setButtonText("Remove");
+						component.setClass("mod-warning");
+						component.onClick(() => {
+							new ConfirmModal(
+								this.plugin.app,
+								() => {
+									if (isActive) {
+										this.plugin.settings.soundscape = "lofi";
+										this.plugin.onSoundscapeChange();
+									}
+									this.plugin.settings.musicCollections.splice(index, 1);
+									this.plugin.settings.myMusicIndex = [];
+									this.plugin.settings.myMusicFolderPath = "";
+									this.plugin.saveSettings();
+									this.display();
+									this.plugin.populateChangeSoundscapeButton();
+								},
+								"Remove music collection",
+								`This will remove your music collection "${collection.name}". Are you sure?`,
+								"Remove"
+							).open();
+						});
+					});
+			}
+		);
+
+		new Setting(containerEl).addButton((component) => {
+			component
+				.setButtonText("Add Music Collection")
+				.setCta()
+				.onClick(() => {
+					const id = uuidv4();
+					this.plugin.settings.musicCollections.push({
+						id,
+						name: "New Collection",
+						folderPath: "",
+						musicIndex: [],
+					});
+					this.plugin.saveSettings();
+					this.display();
+					this.plugin.populateChangeSoundscapeButton();
 				});
-			});
+		});
 
 		new Setting(containerEl)
 			.setName("Periodic re-index")

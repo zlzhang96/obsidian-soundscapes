@@ -8,6 +8,7 @@ import {
 } from "obsidian";
 import fs from "fs";
 import path from "path";
+import { v4 as uuidv4 } from "uuid";
 import MusicMetadata from "music-metadata";
 import Observable from "src/Utils/Observable";
 import { ReactView, SOUNDSCAPES_REACT_VIEW } from "./Views/ReactView";
@@ -96,7 +97,7 @@ export default class SoundscapesPlugin extends Plugin {
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new SoundscapesSettingsTab(this.app, this));
 
-		if (this.settings.soundscape === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		if (this.isMusicCollectionActive()) {
 			this.ribbonButton.show();
 
 			// Delay this so startup isn't impacted
@@ -157,6 +158,18 @@ export default class SoundscapesPlugin extends Plugin {
 		);
 	}
 
+	getActiveMusicCollection() {
+		if (this.settings.soundscape.startsWith("MUSIC_COLLECTION_")) {
+			const id = this.settings.soundscape.split("MUSIC_COLLECTION_")[1];
+			return this.settings.musicCollections.find((c) => c.id === id);
+		}
+		return undefined;
+	}
+
+	isMusicCollectionActive() {
+		return this.settings.soundscape.startsWith("MUSIC_COLLECTION_");
+	}
+
 	/******************************************************************************************************************/
 	//#region Startup
 	/******************************************************************************************************************/
@@ -205,24 +218,26 @@ export default class SoundscapesPlugin extends Plugin {
 	 */
 	async indexMusicLibrary() {
 		console.time("MusicIndex");
-		const filePath = this.settings.myMusicFolderPath;
+		const collection = this.getActiveMusicCollection();
 
 		// Clear any timers if they exist
 		if (this.reindexTimer) {
 			clearTimeout(this.reindexTimer);
 		}
 
-		if (filePath.trim() === "") {
+		if (!collection || collection.folderPath.trim() === "") {
 			new Notice(
-				"Please set music file path in settings to use My Music feature of Soundscapes.",
+				"Please set music file path in settings to use this music collection.",
 				0
 			);
 			return;
 		}
 
-		new Notice("Soundscapes: Indexing local music files...");
+		new Notice(
+			`Soundscapes: Indexing music files for "${collection.name}"...`
+		);
 
-		const musicFilePaths = getAllMusicFiles(filePath);
+		const musicFilePaths = getAllMusicFiles(collection.folderPath);
 
 		const musicPromises = musicFilePaths.map(async (filePath) => {
 			const metadata = await MusicMetadata.parseFile(filePath, {
@@ -243,10 +258,14 @@ export default class SoundscapesPlugin extends Plugin {
 
 		const songs = await Promise.all(musicPromises);
 		console.timeEnd("MusicIndex");
+
+		// Update both the collection's stored index and the active settings
+		collection.musicIndex = songs;
 		this.settings.myMusicIndex = songs;
+		this.settings.myMusicFolderPath = collection.folderPath;
 
 		new Notice(
-			`Soundscapes: Indexing complete. ${songs.length} songs were indexed.`
+			`Soundscapes: Indexing complete. ${songs.length} songs were indexed for "${collection.name}".`
 		);
 
 		if (songs.length === 0) {
@@ -258,6 +277,18 @@ export default class SoundscapesPlugin extends Plugin {
 		this.saveSettings();
 
 		// Reschedule index based on settings
+		if (this.settings.reindexFrequency !== "never") {
+			this.reindexTimer = setTimeout(
+				() => this.indexMusicLibrary(),
+				60000 * parseInt(this.settings.reindexFrequency)
+			);
+		}
+	}
+
+	resetReindexTimer() {
+		if (this.reindexTimer) {
+			clearTimeout(this.reindexTimer);
+		}
 		if (this.settings.reindexFrequency !== "never") {
 			this.reindexTimer = setTimeout(
 				() => this.indexMusicLibrary(),
@@ -358,10 +389,7 @@ export default class SoundscapesPlugin extends Plugin {
 					onReady: this.onPlayerReady.bind(this),
 					onStateChange: (e: any) => {
 						// This is to suppress the player from sending events when it's not the active player
-						if (
-							this.settings.soundscape !==
-							SOUNDSCAPE_TYPE.MY_MUSIC
-						) {
+						if (!this.isMusicCollectionActive()) {
 							this.onStateChange.bind(this)(e);
 						}
 					},
@@ -482,9 +510,11 @@ export default class SoundscapesPlugin extends Plugin {
 			}
 		});
 
-		this.changeSoundscapeSelect.createEl("option", {
-			text: "My Music",
-			value: SOUNDSCAPE_TYPE.MY_MUSIC,
+		this.settings.musicCollections.forEach((collection) => {
+			this.changeSoundscapeSelect.createEl("option", {
+				text: collection.name,
+				value: `MUSIC_COLLECTION_${collection.id}`,
+			});
 		});
 
 		this.changeSoundscapeSelect.value = this.settings.soundscape;
@@ -518,7 +548,7 @@ export default class SoundscapesPlugin extends Plugin {
 			this.player?.seekTo(this.player.getDuration());
 		}
 
-		if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		if (this.isMusicCollectionActive()) {
 			// If we don't currently have an audio source because we recently changed folders but now we do have an index, play the first song
 			if (
 				this.localPlayer.src === location.href &&
@@ -538,7 +568,7 @@ export default class SoundscapesPlugin extends Plugin {
 	 * Pause the current track.
 	 */
 	pause() {
-		if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		if (this.isMusicCollectionActive()) {
 			this.localPlayer.pause();
 		} else {
 			this.player?.pauseVideo();
@@ -558,7 +588,7 @@ export default class SoundscapesPlugin extends Plugin {
 			} else {
 				this.currentTrackIndex--;
 			}
-		} else if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		} else if (this.isMusicCollectionActive()) {
 			// Are we in shuffle mode?
 			if (this.settings.myMusicShuffle) {
 				// If Shuffle queue is empty, let's populate it
@@ -604,7 +634,7 @@ export default class SoundscapesPlugin extends Plugin {
 			} else {
 				this.currentTrackIndex = 0;
 			}
-		} else if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		} else if (this.isMusicCollectionActive()) {
 			// Are we in shuffle mode?
 			if (this.settings.myMusicShuffle) {
 				// If Shuffle queue is empty, let's populate it
@@ -643,7 +673,7 @@ export default class SoundscapesPlugin extends Plugin {
 	 * @param time
 	 */
 	seek(time: number) {
-		if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		if (this.isMusicCollectionActive()) {
 			this.localPlayer.currentTime = time;
 		}
 	}
@@ -698,10 +728,22 @@ export default class SoundscapesPlugin extends Plugin {
 			this.currentTrackIndex = 0;
 		}
 
-		// When we select MY_MUSIC, force a re-index
+		// When we select a music collection, load its data and re-index
 		// Also show the ribbon button!
-		if (this.settings.soundscape === SOUNDSCAPE_TYPE.MY_MUSIC) {
-			this.indexMusicLibrary();
+		if (this.isMusicCollectionActive()) {
+			const collection = this.getActiveMusicCollection();
+			if (collection) {
+				this.settings.myMusicIndex = collection.musicIndex;
+				this.settings.myMusicFolderPath = collection.folderPath;
+			}
+			this.currentTrackIndex = 0;
+			this.shuffleQueue = [];
+			this.shuffleQueueSpot = 0;
+			if (collection && collection.musicIndex.length === 0) {
+				this.indexMusicLibrary();
+			} else {
+				this.resetReindexTimer();
+			}
 			this.ribbonButton.show();
 		} else {
 			this.ribbonButton.hide();
@@ -769,7 +811,7 @@ export default class SoundscapesPlugin extends Plugin {
 				// When it's a playlist-type soundscape, go to the next song
 				if (
 					this.soundscapeType === SOUNDSCAPE_TYPE.CUSTOM ||
-					this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC
+					this.isMusicCollectionActive()
 				) {
 					this.next();
 				}
@@ -818,7 +860,7 @@ export default class SoundscapesPlugin extends Plugin {
 	onSoundscapeChange(autoplay = true) {
 		if (this.settings.soundscape.startsWith(`${SOUNDSCAPE_TYPE.CUSTOM}_`)) {
 			this.soundscapeType = SOUNDSCAPE_TYPE.CUSTOM;
-		} else if (this.settings.soundscape === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		} else if (this.isMusicCollectionActive()) {
 			this.soundscapeType = SOUNDSCAPE_TYPE.MY_MUSIC;
 		} else {
 			this.soundscapeType = SOUNDSCAPE_TYPE.STANDARD;
@@ -840,7 +882,7 @@ export default class SoundscapesPlugin extends Plugin {
 
 			this.statusBarItem.removeClass("soundscapesroot--hideyoutube");
 			this.localPlayer.pause(); // Edge Case: When switching from MyMusic to Youtube, the youtube video keeps playing
-		} else if (this.soundscapeType === SOUNDSCAPE_TYPE.MY_MUSIC) {
+		} else if (this.isMusicCollectionActive()) {
 			const track = this.settings.myMusicIndex[this.currentTrackIndex];
 
 			if (track) {
@@ -907,6 +949,35 @@ export default class SoundscapesPlugin extends Plugin {
 	async loadSettings() {
 		const data = (await this.loadData()) || {};
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+
+		// Migrate legacy single My Music to music collections
+		if (
+			data.myMusicFolderPath &&
+			data.myMusicFolderPath.trim() !== "" &&
+			this.settings.musicCollections.length === 0
+		) {
+			this.settings.musicCollections.push({
+				id: uuidv4(),
+				name: "My Music",
+				folderPath: data.myMusicFolderPath,
+				musicIndex: data.myMusicIndex || [],
+			});
+			this.settings.soundscape = `MUSIC_COLLECTION_${this.settings.musicCollections[0].id}`;
+			this.saveSettings();
+		}
+
+		// Reset legacy MY_MUSIC soundscape if no migration happened
+		if (this.settings.soundscape === SOUNDSCAPE_TYPE.MY_MUSIC) {
+			this.settings.soundscape = "lofi";
+		}
+
+		// Fix invalid collection references (e.g. collection was deleted)
+		if (
+			this.settings.soundscape.startsWith("MUSIC_COLLECTION_") &&
+			!this.getActiveMusicCollection()
+		) {
+			this.settings.soundscape = "lofi";
+		}
 	}
 
 	/**
