@@ -39,11 +39,43 @@
 		cursor: pointer;
 	}
 
+	.soundscapesroot-volumebutton {
+		margin-left: 2px;
+		position: relative;
+	}
+
+	.soundscapesroot-volumePopup {
+		display: none;
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		bottom: 100%;
+		margin-bottom: 4px;
+		padding: 8px 6px;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 3px;
+
+		&.soundscapesroot-volumePopup--visible {
+			display: block;
+		}
+
+		input[type="range"] {
+			-webkit-appearance: slider-vertical;
+			width: 6px;
+			height: 60px;
+		}
+	}
+
 	.soundscapesroot-previousbutton {
 		margin-right: 4px;
 	}
 
 	.soundscapesroot-nextbutton {
+		margin-left: 4px;
+	}
+
+	.soundscapesroot-repeattogglebutton {
 		margin-left: 4px;
 	}
 
@@ -58,12 +90,13 @@
 		top: 0;
 		left: 0;
 		bottom: 0;
-		right: 0;
+		width: 100px;
 	}
+
 
 	.soundscapesroot-nowplaying {
 		margin: 0 12px;
-		width: 150px;
+		width: 135px;
 		overflow: hidden;
 		white-space: nowrap;
 

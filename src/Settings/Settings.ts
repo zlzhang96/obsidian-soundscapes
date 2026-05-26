@@ -19,6 +19,7 @@ export interface SoundscapesPluginSettings {
 	musicCollections: MusicCollection[];
 	reindexFrequency: string;
 	myMusicShuffle: boolean;
+	myMusicRepeat: boolean;
 	currentTrackIndex: number;
 }
 
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: SoundscapesPluginSettings = {
 	musicCollections: [],
 	reindexFrequency: "5",
 	myMusicShuffle: false,
+	myMusicRepeat: false,
 	currentTrackIndex: 0,
 };
 

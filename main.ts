@@ -48,10 +48,12 @@ export default class SoundscapesPlugin extends Plugin {
 	changeSoundscapeSelect: HTMLSelectElement;
 	nowPlayingRoot: HTMLDivElement;
 	nowPlaying: HTMLDivElement;
-	volumeMutedIcon: HTMLDivElement;
-	volumeLowIcon: HTMLDivElement;
-	volumeHighIcon: HTMLDivElement;
+	volumeButton: HTMLButtonElement;
+	volumePopup: HTMLDivElement;
 	volumeSlider: HTMLInputElement;
+	volumeIconSpan: HTMLSpanElement;
+	repeatToggleButton: HTMLButtonElement;
+	closeVolumePopupHandler: () => void;
 	ribbonButton: HTMLElement;
 	debouncedSaveSettings: Function;
 	soundscapeType: SOUNDSCAPE_TYPE;
@@ -140,9 +142,11 @@ export default class SoundscapesPlugin extends Plugin {
 	}
 
 	onunload() {
-		// Clear any timers if they exist
 		if (this.reindexTimer) {
 			clearTimeout(this.reindexTimer);
+		}
+		if (this.closeVolumePopupHandler) {
+			document.removeEventListener("click", this.closeVolumePopupHandler);
 		}
 	}
 
@@ -426,6 +430,13 @@ export default class SoundscapesPlugin extends Plugin {
 		setIcon(this.nextButton, "skip-forward");
 		this.nextButton.onclick = () => this.next();
 
+		// Repeat/Shuffle Toggle Button
+		this.repeatToggleButton = this.statusBarItem.createEl("button", {
+			cls: "soundscapesroot-repeattogglebutton",
+		});
+		this.updateRepeatToggleIcon();
+		this.repeatToggleButton.onclick = () => this.toggleRepeat();
+
 		// Change Soundscape Button
 		const changeSoundscapeButton = this.statusBarItem.createEl("button", {
 			cls: "soundscapesroot-changesoundscapebutton",
@@ -451,27 +462,26 @@ export default class SoundscapesPlugin extends Plugin {
 		});
 		this.toggleNowPlayingScroll();
 
-		// Volume control
-		const volumeIcons = this.statusBarItem.createEl("div", {
-			cls: "soundscapesroot-volumeIcons",
+		// Volume button (always visible)
+		this.volumeButton = this.statusBarItem.createEl("button", {
+			cls: "soundscapesroot-volumebutton",
 		});
+		this.volumeIconSpan = this.volumeButton.createSpan();
+		this.updateVolumeIcon(this.settings.volume);
+		this.volumeButton.onclick = (e: MouseEvent) => {
+			e.stopPropagation();
+			if (this.volumePopup.hasClass("soundscapesroot-volumePopup--visible")) {
+				this.volumePopup.removeClass("soundscapesroot-volumePopup--visible");
+			} else {
+				this.volumePopup.addClass("soundscapesroot-volumePopup--visible");
+			}
+		};
 
-		this.volumeMutedIcon = volumeIcons.createEl("div", {
-			cls: "soundscapesroot-volumeIcons-iconmuted",
+		// Volume popup (hidden by default, appears above button)
+		this.volumePopup = this.volumeButton.createEl("div", {
+			cls: "soundscapesroot-volumePopup",
 		});
-		setIcon(this.volumeMutedIcon, "volume-x");
-
-		this.volumeLowIcon = volumeIcons.createEl("div", {
-			cls: "soundscapesroot-volumeIcons-iconlow",
-		});
-		setIcon(this.volumeLowIcon, "volume-1");
-
-		this.volumeHighIcon = volumeIcons.createEl("div", {
-			cls: "soundscapesroot-volumeIcons-iconhigh",
-		});
-		setIcon(this.volumeHighIcon, "volume-2");
-
-		this.volumeSlider = this.statusBarItem.createEl("input", {
+		this.volumeSlider = this.volumePopup.createEl("input", {
 			attr: {
 				type: "range",
 				min: 0,
@@ -479,13 +489,20 @@ export default class SoundscapesPlugin extends Plugin {
 				value: this.settings.volume,
 			},
 		});
-		// Create a virtual event object
-		this.onVolumeChange({ target: { value: this.settings.volume } });
-
 		this.volumeSlider.addEventListener(
 			"input",
 			this.onVolumeChange.bind(this)
 		);
+
+		this.closeVolumePopupHandler = () => {
+			if (this.volumePopup.hasClass("soundscapesroot-volumePopup--visible")) {
+				this.volumePopup.removeClass("soundscapesroot-volumePopup--visible");
+			}
+		};
+		document.addEventListener("click", this.closeVolumePopupHandler);
+		this.volumePopup.addEventListener("click", (e: MouseEvent) => {
+			e.stopPropagation();
+		});
 	}
 
 	/**
@@ -494,31 +511,32 @@ export default class SoundscapesPlugin extends Plugin {
 	populateChangeSoundscapeButton() {
 		this.changeSoundscapeSelect.replaceChildren();
 
-		Object.values(SOUNDSCAPES).forEach((soundscape) => {
-			this.changeSoundscapeSelect.createEl("option", {
-				text: soundscape.name,
-				value: soundscape.id,
-			});
-		});
-
-		this.settings.customSoundscapes.forEach((customSoundscape) => {
-			if (customSoundscape.tracks.length > 0) {
+		if (this.settings.musicCollections.length > 0) {
+			this.settings.musicCollections.forEach((collection) => {
 				this.changeSoundscapeSelect.createEl("option", {
-					text: customSoundscape.name,
-					value: `${SOUNDSCAPE_TYPE.CUSTOM}_${customSoundscape.id}`,
+					text: collection.name,
+					value: `MUSIC_COLLECTION_${collection.id}`,
 				});
-			}
-		});
-
-		this.settings.musicCollections.forEach((collection) => {
-			this.changeSoundscapeSelect.createEl("option", {
-				text: collection.name,
-				value: `MUSIC_COLLECTION_${collection.id}`,
 			});
-		});
+		} else {
+			Object.values(SOUNDSCAPES).forEach((soundscape) => {
+				this.changeSoundscapeSelect.createEl("option", {
+					text: soundscape.name,
+					value: soundscape.id,
+				});
+			});
+
+			this.settings.customSoundscapes.forEach((customSoundscape) => {
+				if (customSoundscape.tracks.length > 0) {
+					this.changeSoundscapeSelect.createEl("option", {
+						text: customSoundscape.name,
+						value: `${SOUNDSCAPE_TYPE.CUSTOM}_${customSoundscape.id}`,
+					});
+				}
+			});
+		}
 
 		this.changeSoundscapeSelect.value = this.settings.soundscape;
-
 		this.changeSoundscapeSelect.addEventListener(
 			"change",
 			(event: Event) => {
@@ -694,11 +712,36 @@ export default class SoundscapesPlugin extends Plugin {
 	 */
 	toggleShuffle() {
 		this.settings.myMusicShuffle = !this.settings.myMusicShuffle;
+		this.settings.myMusicRepeat = false;
 		this.saveSettings();
 
 		if (this.settings.myMusicShuffle) {
 			this.shuffleQueue = [];
 			this.shuffleQueueSpot = 0;
+		}
+		this.updateRepeatToggleIcon();
+	}
+
+	toggleRepeat() {
+		// Toggle between shuffle and repeat-one
+		if (this.settings.myMusicRepeat) {
+			this.settings.myMusicRepeat = false;
+			this.settings.myMusicShuffle = true;
+			this.shuffleQueue = [];
+			this.shuffleQueueSpot = 0;
+		} else {
+			this.settings.myMusicRepeat = true;
+			this.settings.myMusicShuffle = false;
+		}
+		this.saveSettings();
+		this.updateRepeatToggleIcon();
+	}
+
+	updateRepeatToggleIcon() {
+		if (this.settings.myMusicRepeat) {
+			setIcon(this.repeatToggleButton, "repeat");
+		} else {
+			setIcon(this.repeatToggleButton, "shuffle");
 		}
 	}
 
@@ -779,9 +822,11 @@ export default class SoundscapesPlugin extends Plugin {
 		if (this.soundscapeType === SOUNDSCAPE_TYPE.STANDARD) {
 			this.previousButton.hide();
 			this.nextButton.hide();
+			this.repeatToggleButton.hide();
 		} else {
 			this.previousButton.show();
 			this.nextButton.show();
+			this.repeatToggleButton.show();
 		}
 
 		switch (state) {
@@ -808,8 +853,9 @@ export default class SoundscapesPlugin extends Plugin {
 				});
 				break;
 			case PLAYER_STATE.ENDED:
-				// When it's a playlist-type soundscape, go to the next song
-				if (
+				if (this.settings.myMusicRepeat && this.isMusicCollectionActive()) {
+					// Repeat-one: replay current track without advancing
+				} else if (
 					this.soundscapeType === SOUNDSCAPE_TYPE.CUSTOM ||
 					this.isMusicCollectionActive()
 				) {
@@ -830,25 +876,21 @@ export default class SoundscapesPlugin extends Plugin {
 		this.player?.setVolume(volume);
 		this.localPlayer.volume = volume / 100; // Audio object expects 0-1
 
-		if (volume === 0) {
-			this.volumeMutedIcon.show();
-			this.volumeLowIcon.hide();
-			this.volumeHighIcon.hide();
-		} else if (volume <= 50) {
-			this.volumeMutedIcon.hide();
-			this.volumeLowIcon.show();
-			this.volumeHighIcon.hide();
-		} else {
-			this.volumeMutedIcon.hide();
-			this.volumeLowIcon.hide();
-			this.volumeHighIcon.show();
-		}
+		this.updateVolumeIcon(volume);
 
 		this.settings.volume = volume;
-		// Debounce saves of volume change so we don't hammer the users hard drive
-		// However, update the observable immediately to keep UI up to date
 		this.settingsObservable.setValue(this.settings);
 		this.debouncedSaveSettings();
+	}
+
+	updateVolumeIcon(volume: number) {
+		if (volume === 0) {
+			setIcon(this.volumeIconSpan, "volume-x");
+		} else if (volume <= 50) {
+			setIcon(this.volumeIconSpan, "volume-1");
+		} else {
+			setIcon(this.volumeIconSpan, "volume-2");
+		}
 	}
 
 	/**
@@ -931,7 +973,6 @@ export default class SoundscapesPlugin extends Plugin {
 
 		// Keep miniplayer's soundscape selection button up to date
 		this.changeSoundscapeSelect.value = this.settings.soundscape;
-
 		this.saveSettings();
 	}
 
