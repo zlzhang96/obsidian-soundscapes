@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 import MusicMetadata from "music-metadata";
 import Observable from "src/Utils/Observable";
 import { ReactView, SOUNDSCAPES_REACT_VIEW } from "./Views/ReactView";
-import getAllMusicFiles from "src/Utils/getAllMusicFiles";
+import getAllMusicFiles, { getMimeType } from "src/Utils/getAllMusicFiles";
 import { LocalPlayerState, Player } from "src/Types/Interfaces";
 import { PLAYER_STATE, SOUNDSCAPE_TYPE } from "src/Types/Enums";
 import SOUNDSCAPES from "src/Soundscapes";
@@ -253,7 +253,7 @@ export default class SoundscapesPlugin extends Plugin {
 				fullPath: filePath,
 				title:
 					metadata.common.title ||
-					path.basename(filePath).replace(/\.(mp3)$/gi, ""),
+					path.basename(filePath).replace(/\.[^.]+$/gi, ""),
 				artist: metadata.common.artist,
 				album: metadata.common.album,
 				duration: metadata.format.duration,
@@ -932,7 +932,8 @@ export default class SoundscapesPlugin extends Plugin {
 				const base64Data = fileData.toString("base64");
 
 				this.localPlayer.pause();
-				this.localPlayer.src = `data:audio/mp3;base64,${base64Data}`;
+				const ext = track.fullPath.split(".").pop()?.toLowerCase() || "mp3";
+				this.localPlayer.src = `data:${getMimeType(ext)};base64,${base64Data}`;
 
 				this.nowPlaying.setText(`${track.title} - ${track.artist}`);
 

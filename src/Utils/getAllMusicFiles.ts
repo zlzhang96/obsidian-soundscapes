@@ -1,7 +1,16 @@
 import fs from "fs";
 import path from "path";
 
-const MUSIC_FILE_EXTENSIONS = ["mp3"];
+const MUSIC_FILE_EXTENSIONS = ["mp3", "m4a"];
+
+const MIME_TYPES: Record<string, string> = {
+	mp3: "audio/mp3",
+	m4a: "audio/mp4",
+};
+
+export const getMimeType = (extension: string): string => {
+	return MIME_TYPES[extension] || "audio/mp3";
+};
 
 /**
  * Given a file path, builds a list of music files by recursively going through the file structure and finding
