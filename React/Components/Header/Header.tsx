@@ -82,7 +82,7 @@ const Header = () => {
 							<div className="soundscapesmymusic-middle-line1-left">
 								<button
 									className={`soundscapesmymusic-middle-line1-button ${
-										plugin?.settings.myMusicShuffle &&
+										plugin?.settings.playMode === "shuffle" &&
 										"soundscapesmymusic-middle-line1-button--active"
 									}`}
 									onClick={() => {

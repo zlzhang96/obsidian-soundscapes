@@ -608,7 +608,7 @@ export default class SoundscapesPlugin extends Plugin {
 			}
 		} else if (this.isMusicCollectionActive()) {
 			// Are we in shuffle mode?
-			if (this.settings.myMusicShuffle) {
+			if (this.settings.playMode === "shuffle") {
 				// If Shuffle queue is empty, let's populate it
 				if (this.shuffleQueue.length === 0) {
 					this.shuffleQueue = createShuffleQueue(
@@ -654,7 +654,7 @@ export default class SoundscapesPlugin extends Plugin {
 			}
 		} else if (this.isMusicCollectionActive()) {
 			// Are we in shuffle mode?
-			if (this.settings.myMusicShuffle) {
+			if (this.settings.playMode === "shuffle") {
 				// If Shuffle queue is empty, let's populate it
 				if (this.shuffleQueue.length === 0) {
 					this.shuffleQueue = createShuffleQueue(
@@ -711,11 +711,10 @@ export default class SoundscapesPlugin extends Plugin {
 	 * Turn on shuffle mode. When we toggle it on, reset the shuffle queue.
 	 */
 	toggleShuffle() {
-		this.settings.myMusicShuffle = !this.settings.myMusicShuffle;
-		this.settings.myMusicRepeat = false;
+		this.settings.playMode = this.settings.playMode === "shuffle" ? "repeat" : "shuffle";
 		this.saveSettings();
 
-		if (this.settings.myMusicShuffle) {
+		if (this.settings.playMode === "shuffle") {
 			this.shuffleQueue = [];
 			this.shuffleQueueSpot = 0;
 		}
@@ -723,26 +722,23 @@ export default class SoundscapesPlugin extends Plugin {
 	}
 
 	toggleRepeat() {
-		// Toggle between shuffle and repeat-one
-		if (this.settings.myMusicRepeat) {
-			this.settings.myMusicRepeat = false;
-			this.settings.myMusicShuffle = true;
+		this.settings.playMode = this.settings.playMode === "shuffle" ? "repeat" : "shuffle";
+		this.saveSettings();
+
+		if (this.settings.playMode === "shuffle") {
 			this.shuffleQueue = [];
 			this.shuffleQueueSpot = 0;
-		} else {
-			this.settings.myMusicRepeat = true;
-			this.settings.myMusicShuffle = false;
 		}
-		this.saveSettings();
 		this.updateRepeatToggleIcon();
 	}
 
 	updateRepeatToggleIcon() {
-		if (this.settings.myMusicRepeat) {
+		if (this.settings.playMode === "repeat") {
 			setIcon(this.repeatToggleButton, "repeat");
 		} else {
 			setIcon(this.repeatToggleButton, "shuffle");
 		}
+		this.repeatToggleButton.onclick = () => this.toggleRepeat();
 	}
 
 	/**
@@ -853,7 +849,7 @@ export default class SoundscapesPlugin extends Plugin {
 				});
 				break;
 			case PLAYER_STATE.ENDED:
-				if (this.settings.myMusicRepeat && this.isMusicCollectionActive()) {
+				if (this.settings.playMode === "repeat" && this.isMusicCollectionActive()) {
 					// Repeat-one: replay current track without advancing
 				} else if (
 					this.soundscapeType === SOUNDSCAPE_TYPE.CUSTOM ||
