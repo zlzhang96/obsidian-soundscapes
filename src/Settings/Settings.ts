@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS: SoundscapesPluginSettings = {
 	myMusicIndex: [],
 	myMusicFolderPath: "",
 	musicCollections: [],
-	reindexFrequency: "5",
+        reindexFrequency: "1440",
 	playMode: "shuffle",
 	currentTrackIndex: 0,
 };
