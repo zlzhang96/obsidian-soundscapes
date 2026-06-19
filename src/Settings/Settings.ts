@@ -297,6 +297,7 @@ export class SoundscapesSettingsTab extends PluginSettingTab {
 						name: "New Collection",
 						folderPath: "",
 						musicIndex: [],
+						currentTrackIndex: 0,
 					});
 					this.plugin.saveSettings();
 					this.display();
