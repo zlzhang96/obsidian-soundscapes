@@ -511,30 +511,28 @@ export default class SoundscapesPlugin extends Plugin {
 	populateChangeSoundscapeButton() {
 		this.changeSoundscapeSelect.replaceChildren();
 
-		if (this.settings.musicCollections.length > 0) {
-			this.settings.musicCollections.forEach((collection) => {
-				this.changeSoundscapeSelect.createEl("option", {
-					text: collection.name,
-					value: `MUSIC_COLLECTION_${collection.id}`,
-				});
+		Object.values(SOUNDSCAPES).forEach((soundscape) => {
+			this.changeSoundscapeSelect.createEl("option", {
+				text: soundscape.name,
+				value: soundscape.id,
 			});
-		} else {
-			Object.values(SOUNDSCAPES).forEach((soundscape) => {
-				this.changeSoundscapeSelect.createEl("option", {
-					text: soundscape.name,
-					value: soundscape.id,
-				});
-			});
+		});
 
-			this.settings.customSoundscapes.forEach((customSoundscape) => {
-				if (customSoundscape.tracks.length > 0) {
-					this.changeSoundscapeSelect.createEl("option", {
-						text: customSoundscape.name,
-						value: `${SOUNDSCAPE_TYPE.CUSTOM}_${customSoundscape.id}`,
-					});
-				}
+		this.settings.customSoundscapes.forEach((customSoundscape) => {
+			if (customSoundscape.tracks.length > 0) {
+				this.changeSoundscapeSelect.createEl("option", {
+					text: customSoundscape.name,
+					value: `${SOUNDSCAPE_TYPE.CUSTOM}_${customSoundscape.id}`,
+				});
+			}
+		});
+
+		this.settings.musicCollections.forEach((collection) => {
+			this.changeSoundscapeSelect.createEl("option", {
+				text: collection.name,
+				value: `MUSIC_COLLECTION_${collection.id}`,
 			});
-		}
+		});
 
 		this.changeSoundscapeSelect.value = this.settings.soundscape;
 		this.changeSoundscapeSelect.addEventListener(
